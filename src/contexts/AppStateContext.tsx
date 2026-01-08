@@ -142,8 +142,11 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       setLoading(true);
 
       // Import AI service dynamically to avoid circular dependencies
-      const { getAIService, AIServiceError } = await import('../services/aiService');
+      const { getAIService, AIServiceError, resetAIService } = await import('../services/aiService');
       const { AI_CONFIG } = await import('../types');
+
+      // AI Serviceインスタンスをリセット（最新の設定を反映）
+      resetAIService();
 
       // Create user message
       const userMessage: ChatMessage = {
@@ -180,7 +183,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       // Add assistant message to history
       addMessage(assistantMessage);
 
-      // Update code area with AI response
+      // Update code editor with the response
       updateCode(response.content);
 
     } catch (error) {
@@ -198,14 +201,6 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       }
       
       setError(errorMessage);
-      
-      // Also emit integration event for error handling
-      try {
-        const { IntegrationUtils } = await import('../utils/integration');
-        IntegrationUtils.notifyError(errorMessage, 'ChatArea');
-      } catch (integrationError) {
-        console.warn('Failed to emit integration error event:', integrationError);
-      }
     } finally {
       setLoading(false);
     }

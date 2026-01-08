@@ -7,6 +7,7 @@ export {
   AIServiceError,
   createAIService,
   getAIService,
+  resetAIService,
   type AIProvider,
   type AIServiceConfig
 } from './aiService';

@@ -4,7 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { AppStateProvider, useAppState } from '../../contexts/AppStateContext';
 import { ErrorHandlingProvider, globalErrorHandler } from '../../contexts/ErrorHandlingContext';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { ChatArea, CodeEditor, FileOperations } from '../../components';
+import { ChatArea } from '../../components/ChatArea';
+import { CodeEditor } from '../../components/CodeEditor';
+import { FileOperations } from '../../components/FileOperations';
+import { ApiKeySettings } from '../../components/ApiKeySettings';
 
 /**
  * Canvas Page Content Component
@@ -15,6 +18,7 @@ function CanvasPageContent() {
   const [leftWidth, setLeftWidth] = useState(50); // 左側エリアの幅（%）
   const [isMobile, setIsMobile] = useState(false);
   const [activePanel, setActivePanel] = useState<'chat' | 'editor'>('chat'); // モバイル用
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // 設定画面の表示状態
 
   /**
    * レスポンシブデザイン対応
@@ -101,6 +105,17 @@ function CanvasPageContent() {
             Markdown AI Canvas
           </h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-2 md:px-3 py-1.5 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+              title="API設定"
+            >
+              <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              設定
+            </button>
             <button
               onClick={handleLogClear}
               className="px-2 md:px-3 py-1.5 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
@@ -208,6 +223,12 @@ function CanvasPageContent() {
           </>
         )}
       </main>
+
+      {/* API設定画面 */}
+      <ApiKeySettings 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </div>
   );
 }

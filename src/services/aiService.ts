@@ -76,7 +76,7 @@ export class AIService {
   }
 
   /**
-   * Send request to AI API
+   * Send request to AI API via Next.js API route
    * Requirements: 1.1, 5.1, 5.3
    */
   async sendRequest(request: AIApiRequest): Promise<AIApiResponse> {
@@ -91,10 +91,8 @@ export class AIService {
         }, this.config.timeout);
       });
 
-      // Create API request promise
-      const apiPromise = this.config.provider === 'openai' 
-        ? this.sendOpenAIRequest(request)
-        : this.sendGeminiRequest(request);
+      // Create API request promise via Next.js API route
+      const apiPromise = this.sendAPIRouteRequest(request);
 
       // Race between API call and timeout
       const response = await Promise.race([apiPromise, timeoutPromise]);
@@ -106,8 +104,62 @@ export class AIService {
   }
 
   /**
+   * Send request via Next.js API route
+   */
+  private async sendAPIRouteRequest(request: AIApiRequest): Promise<AIApiResponse> {
+    const response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: request.messages,
+        provider: this.config.provider,
+        apiKey: this.config.apiKey,
+        temperature: request.temperature,
+        maxTokens: request.maxTokens
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+      
+      // 開発環境では詳細なエラー情報をログ出力
+      if (process.env.NODE_ENV === 'development') {
+        console.error('AI API Error Details:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          url: response.url
+        });
+      }
+      
+      if (response.status === 401) {
+        throw new AIServiceError(errorMessage, 'AUTH_ERROR');
+      } else if (response.status === 429) {
+        throw new AIServiceError(errorMessage, 'RATE_LIMIT');
+      } else if (response.status === 402) {
+        throw new AIServiceError(errorMessage, 'QUOTA_EXCEEDED');
+      } else if (response.status >= 500) {
+        throw new AIServiceError(errorMessage, 'SERVER_ERROR');
+      } else {
+        throw new AIServiceError(errorMessage, 'API_ERROR');
+      }
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  /*
+  // 以下のメソッドは直接API呼び出し用（現在は使用されていません）
+  // API Routeを使用するため、コメントアウト
+
+  /**
    * Send request to OpenAI API
    */
+  /*
   private async sendOpenAIRequest(request: AIApiRequest): Promise<AIApiResponse> {
     if (!this.openaiClient) {
       throw new AIServiceError(
@@ -156,10 +208,12 @@ export class AIService {
       throw error;
     }
   }
+  */
 
   /**
    * Send request to Gemini API
    */
+  /*
   private async sendGeminiRequest(request: AIApiRequest): Promise<AIApiResponse> {
     if (!this.geminiClient) {
       throw new AIServiceError(
@@ -216,12 +270,23 @@ export class AIService {
       throw error;
     }
   }
+  */
 
   /**
    * Handle and transform errors
    * Requirements: 5.2
    */
   private handleError(error: any): AIServiceError {
+    // 開発環境では詳細なエラー情報をログ出力
+    console.error('AI Service Error Details:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      type: error.type,
+      stack: error.stack,
+      originalError: error
+    });
+
     if (error instanceof AIServiceError) {
       return error;
     }
@@ -256,9 +321,14 @@ export class AIService {
       );
     }
 
+    // 開発環境では元のエラーメッセージを含める
+    const errorMessage = process.env.NODE_ENV === 'development' && error.message
+      ? `AI APIエラー: ${error.message}`
+      : 'AI APIでエラーが発生しました。再試行してください。';
+
     // Generic error
     return new AIServiceError(
-      'AI APIでエラーが発生しました。再試行してください。',
+      errorMessage,
       'API_ERROR',
       error
     );
@@ -290,30 +360,71 @@ export class AIService {
 }
 
 /**
- * Create AI service instance with environment variables
+ * Create AI service instance with dynamic API key support
  */
 export function createAIService(): AIService {
-  // Try to get API keys from environment variables
-  const openaiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-  const geminiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  // Try to get API keys from localStorage first (client-side)
+  let openaiKey: string | undefined;
+  let geminiKey: string | undefined;
+  let savedProvider: AIProvider | undefined;
 
-  // Determine which provider to use based on available keys
+  if (typeof window !== 'undefined') {
+    // Client-side: check localStorage
+    try {
+      openaiKey = localStorage.getItem('openai_api_key') || undefined;
+      geminiKey = localStorage.getItem('gemini_api_key') || undefined;
+      savedProvider = (localStorage.getItem('ai_provider') as AIProvider) || undefined;
+      
+      console.log('Loading API keys from localStorage:', {
+        hasOpenAI: !!openaiKey,
+        hasGemini: !!geminiKey,
+        savedProvider,
+        openaiPrefix: openaiKey ? openaiKey.substring(0, 8) + '...' : 'none',
+        geminiPrefix: geminiKey ? geminiKey.substring(0, 8) + '...' : 'none'
+      });
+      
+      // Also check dynamic window variables (set by ApiKeySettings)
+      openaiKey = openaiKey || (window as any).__NEXT_PUBLIC_OPENAI_API_KEY;
+      geminiKey = geminiKey || (window as any).__NEXT_PUBLIC_GEMINI_API_KEY;
+    } catch (error) {
+      console.warn('Failed to read from localStorage:', error);
+    }
+  }
+
+  // Fallback to environment variables
+  openaiKey = openaiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  geminiKey = geminiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+  // Determine which provider to use
   let provider: AIProvider;
   let apiKey: string;
 
-  if (openaiKey) {
+  if (savedProvider && 
+      ((savedProvider === 'openai' && openaiKey) || 
+       (savedProvider === 'gemini' && geminiKey))) {
+    // Use saved provider if available
+    provider = savedProvider;
+    apiKey = savedProvider === 'openai' ? openaiKey! : geminiKey!;
+    console.log(`Using saved provider: ${provider}`);
+  } else if (openaiKey) {
+    // Default to OpenAI if available
     provider = 'openai';
     apiKey = openaiKey;
+    console.log('Using OpenAI as default provider');
   } else if (geminiKey) {
+    // Use Gemini as fallback
     provider = 'gemini';
     apiKey = geminiKey;
+    console.log('Using Gemini as fallback provider');
   } else {
+    console.error('No API keys found');
     throw new AIServiceError(
-      'API キーが設定されていません。環境変数を確認してください。',
+      'API キーが設定されていません。設定画面からAPIキーを入力してください。',
       'CONFIG_ERROR'
     );
   }
 
+  console.log(`Creating AI service with provider: ${provider}`);
   return new AIService({ provider, apiKey });
 }
 
@@ -326,8 +437,19 @@ let defaultAIService: AIService | null = null;
  * Get or create default AI service instance
  */
 export function getAIService(): AIService {
-  if (!defaultAIService) {
+  // 毎回新しいインスタンスを作成（ローカルストレージの最新値を反映）
+  try {
     defaultAIService = createAIService();
+    return defaultAIService;
+  } catch (error) {
+    console.error('Failed to create AI service:', error);
+    throw error;
   }
-  return defaultAIService;
+}
+
+/**
+ * Reset AI service instance (for API key changes)
+ */
+export function resetAIService(): void {
+  defaultAIService = null;
 }
