@@ -40,8 +40,8 @@ describe('CanvasPage', () => {
     expect(screen.getByText('Markdown AI Canvas')).toBeInTheDocument();
     expect(screen.getByText('トップ')).toBeInTheDocument();
     
-    // Check that both main areas are present
-    expect(screen.getByTestId('monaco-editor')).toBeInTheDocument();
+    // Check that code editor area is present (currently using textarea)
+    expect(screen.getByPlaceholderText('AIが生成したMarkdownコードがここに表示されます...')).toBeInTheDocument();
     
     // Check file operation buttons
     expect(screen.getByText('保存')).toBeInTheDocument();
